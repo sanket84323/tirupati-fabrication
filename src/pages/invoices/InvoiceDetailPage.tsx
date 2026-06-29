@@ -84,11 +84,11 @@ export default function InvoiceDetailPage() {
   const generatePDFBlob = async (): Promise<{ blob: Blob; filename: string }> => {
     if (!printRef.current) throw new Error('Print container not found');
     
-    // Clone the element and append it off-screen with a fixed desktop width of 800px.
-    // This ensures that the generated PDF has a premium, uniform layout regardless of the user's screen size.
     const element = printRef.current;
     const clone = element.cloneNode(true) as HTMLDivElement;
-    clone.style.width = '800px';
+    // Use narrower width on mobile to reduce memory usage
+    const isMobile = window.innerWidth < 768;
+    clone.style.width = isMobile ? '680px' : '800px';
     clone.style.position = 'absolute';
     clone.style.top = '-9999px';
     clone.style.left = '-9999px';
@@ -98,27 +98,29 @@ export default function InvoiceDetailPage() {
 
     try {
       const canvas = await html2canvas(clone, {
-        scale: 2.5,
+        // Lower scale on mobile devices to prevent out-of-memory errors
+        scale: isMobile ? 1.5 : 2.5,
         backgroundColor: '#ffffff',
         useCORS: true,
-        allowTaint: true,
+        allowTaint: false,
         logging: false,
+        // Disable image rendering that causes issues on mobile
+        imageTimeout: 5000,
+        removeContainer: true,
       });
-      document.body.removeChild(clone);
+      if (document.body.contains(clone)) document.body.removeChild(clone);
 
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
       const pdf = new jsPDF('p', 'mm', 'a4');
       const imgWidth = 210;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, Math.min(imgHeight, 297));
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, Math.min(imgHeight, 297));
       const blob = pdf.output('blob');
       const filename = `${invoice?.invoice_number || 'Invoice'}.pdf`;
       return { blob, filename };
     } catch (err) {
-      if (document.body.contains(clone)) {
-        document.body.removeChild(clone);
-      }
+      if (document.body.contains(clone)) document.body.removeChild(clone);
       throw err;
     }
   };
@@ -127,18 +129,38 @@ export default function InvoiceDetailPage() {
     const toastId = toast.loading('Generating PDF...');
     try {
       const { blob, filename } = await generatePDFBlob();
+      const file = new File([blob], filename, { type: 'application/pdf' });
+      
+      // On mobile, prefer Web Share API if available
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        toast.dismiss(toastId);
+        await navigator.share({ files: [file], title: filename });
+        toast.success('PDF shared!');
+        return;
+      }
+      
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.click();
-      URL.revokeObjectURL(url);
-      toast.dismiss(toastId);
-      toast.success('PDF downloaded!');
+      // iOS Safari doesn't support the download attribute — open in new tab instead
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      if (isSafari) {
+        window.open(url, '_blank');
+        toast.dismiss(toastId);
+        toast.success('PDF opened! Long-press to save.');
+      } else {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.dismiss(toastId);
+        toast.success('PDF downloaded!');
+      }
     } catch (error) {
       console.error(error);
       toast.dismiss(toastId);
-      toast.error('Failed to generate PDF');
+      toast.error('Failed to generate PDF. Try using Print instead.');
     }
   };
 

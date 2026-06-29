@@ -771,11 +771,25 @@ export default function OrderDetailPage() {
           <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-gray-900 dark:text-white">Progress Photos</h2>
-              <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="btn-secondary text-xs">
-                {uploading ? <div className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" /> : <CloudUploadIcon style={{ fontSize: 16 }} />}
+          <div className="flex items-center gap-2">
+              {/* Use label wrapping the input — most reliable on iOS/Android */}
+              <label
+                className={`btn-secondary text-xs cursor-pointer flex items-center gap-1 ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {uploading
+                  ? <div className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                  : <CloudUploadIcon style={{ fontSize: 16 }} />
+                }
                 Upload Photo
-              </button>
-              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={handleImageUpload}
+                  disabled={uploading}
+                />
+              </label>
+            </div>
             </div>
             {images.length === 0 ? (
               <div className="text-center py-8 text-gray-400 text-sm">No photos uploaded yet</div>
